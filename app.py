@@ -32,8 +32,7 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- SMART ORB JAVASCRIPT COMPONENT ---
-# This block handles the 3D UI, Noise Suppression, and Silence Detection
+# --- SAFE SMART ORB COMPONENT ---
 orb_html = """
 <!DOCTYPE html>
 <html>
@@ -60,7 +59,6 @@ orb_html = """
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        /* Glowing effect when actively listening */
         .glass-orb.listening {
             box-shadow: 
                 inset -15px -15px 30px rgba(0,0,0,0.7),
@@ -75,34 +73,39 @@ orb_html = """
     <div class="glass-orb" id="orb"></div>
 
     <script>
-        function init() {
-            Streamlit.setComponentReady();
-            Streamlit.setFrameHeight(250);
-            
-            const orb = document.getElementById("orb");
-            // Load Chrome's native Speech Recognition (includes VAD & DSP Noise Suppression)
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            if (!SpeechRecognition) {
-                orb.innerHTML = "<p style='color:white;text-align:center;padding-top:70px'>Not Supported</p>";
-                return;
+        // Fallback safety to prevent perpetual loading
+        function safeInit() {
+            if (window.Streamlit) {
+                Streamlit.setComponentReady();
+                Streamlit.setFrameHeight(250);
             }
+        }
+        window.addEventListener("load", safeInit);
+        setTimeout(safeInit, 200);
 
+        const orb = document.getElementById("orb");
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            // Automatically stop when silence is detected
-            recognition.continuous = false; 
+            recognition.continuous = false;
             recognition.interimResults = false;
 
             orb.addEventListener("click", () => {
                 orb.classList.add("listening");
-                recognition.start();
+                try {
+                    recognition.start();
+                } catch(e) {
+                    orb.classList.remove("listening");
+                }
             });
 
             recognition.onresult = (event) => {
                 const transcript = event.results[0][0].transcript;
                 orb.classList.remove("listening");
-                // Send the recognized text back to Streamlit/Python
-                Streamlit.setComponentValue(transcript);
+                if (window.Streamlit) {
+                    Streamlit.setComponentValue(transcript);
+                }
             };
 
             recognition.onspeechend = () => {
@@ -110,18 +113,15 @@ orb_html = """
                 orb.classList.remove("listening");
             };
 
-            recognition.onerror = (event) => {
+            recognition.onerror = () => {
                 orb.classList.remove("listening");
             };
         }
-        
-        window.addEventListener("load", init);
     </script>
 </body>
 </html>
 """
 
-# Render the Smart Orb
 transcript = components.html(orb_html, height=250)
 
 # Display chat history
