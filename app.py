@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import sys
 import os
 
@@ -12,15 +13,6 @@ st.markdown("""
     .stAppDeployButton {display: none !important;}
     [data-testid="stHeaderActionElements"] {display: none !important;}
     h1 { text-align: center; margin-top: 1rem; font-family: sans-serif; }
-    
-    .orb-wrapper {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        margin-top: 2rem;
-        margin-bottom: 2rem;
-        filter: drop-shadow(0 15px 25px rgba(10, 150, 80, 0.3));
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -39,72 +31,85 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Render the True 3D Rotating Sphere using Three.js
-st.markdown("""
-    <div class="orb-wrapper">
-        <div id="three-orb-canvas" style="width: 180px; height: 180px; border-radius: 50%;"></div>
-    </div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-    (function() {
-        const container = document.getElementById('three-orb-canvas');
-        if (!container) return;
-        
-        // Prevent duplicate initializations if Streamlit reruns
-        container.innerHTML = '';
+# Render the True 3D Rotating Sphere via an isolated component iframe
+components.html("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {
+                margin: 0;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                background: transparent;
+                height: 100vh;
+                overflow: hidden;
+            }
+            .orb-wrapper {
+                filter: drop-shadow(0 15px 25px rgba(10, 150, 80, 0.4));
+            }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    </head>
+    <body>
+        <div class="orb-wrapper">
+            <div id="three-orb-canvas" style="width: 180px; height: 180px; border-radius: 50%;"></div>
+        </div>
+        <script>
+            const container = document.getElementById('three-orb-canvas');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+            camera.position.z = 4;
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-        camera.position.z = 4;
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(180, 180);
+            container.appendChild(renderer.domElement);
 
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-        renderer.setSize(180, 180);
-        container.appendChild(renderer.domElement);
+            // Inner solid 3D sphere
+            const geometry = new THREE.SphereGeometry(1.2, 32, 32);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x10b981,
+                emissive: 0x054f21,
+                roughness: 0.25,
+                metalness: 0.4
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
 
-        // Inner solid 3D sphere with rich metallic/glossy green material
-        const geometry = new THREE.SphereGeometry(1.2, 32, 32);
-        const material = new THREE.MeshStandardMaterial({
-            color: 0x10b981,
-            emissive: 0x054f21,
-            roughness: 0.25,
-            metalness: 0.4
-        });
-        const sphere = new THREE.Mesh(geometry, material);
-        scene.add(sphere);
+            // Outer translucent wireframe sphere for depth
+            const wireGeometry = new THREE.SphereGeometry(1.26, 16, 16);
+            const wireMaterial = new THREE.MeshBasicMaterial({
+                color: 0x6bfb9c,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.2
+            });
+            const wireSphere = new THREE.Mesh(wireGeometry, wireMaterial);
+            scene.add(wireSphere);
 
-        // Outer translucent high-tech wireframe sphere for depth
-        const wireGeometry = new THREE.SphereGeometry(1.26, 16, 16);
-        const wireMaterial = new THREE.MeshBasicMaterial({
-            color: 0x6bfb9c,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.2
-        });
-        const wireSphere = new THREE.Mesh(wireGeometry, wireMaterial);
-        scene.add(wireSphere);
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
 
-        // Dynamic 3D Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambientLight);
+            const pointLight = new THREE.PointLight(0x6bfb9c, 3, 50);
+            pointLight.position.set(3, 3, 3);
+            scene.add(pointLight);
 
-        const pointLight = new THREE.PointLight(0x6bfb9c, 3, 50);
-        pointLight.position.set(3, 3, 3);
-        scene.add(pointLight);
-
-        // Smooth multi-axis rotation loop
-        function animate() {
-            requestAnimationFrame(animate);
-            sphere.rotation.x += 0.004;
-            sphere.rotation.y += 0.007;
-            wireSphere.rotation.x -= 0.003;
-            wireSphere.rotation.y -= 0.005;
-            renderer.render(scene, camera);
-        }
-        animate();
-    })();
-    </script>
-""", unsafe_allow_html=True)
+            // Rotation animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                sphere.rotation.x += 0.004;
+                sphere.rotation.y += 0.007;
+                wireSphere.rotation.x -= 0.003;
+                wireSphere.rotation.y -= 0.005;
+                renderer.render(scene, camera);
+            }
+            animate();
+        </script>
+    </body>
+    </html>
+""", height=210)
 
 # Display chat history
 for message in st.session_state.messages:
