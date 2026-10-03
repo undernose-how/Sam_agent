@@ -2,61 +2,63 @@ import streamlit as st
 import sys
 import os
 
-# Ensure sam_agent path is accessible
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.router import SamRouter
 
 st.set_page_config(page_title="Sam", layout="centered")
 
-# Custom CSS to match the minimal 3D design
 st.markdown("""
     <style>
-    /* Hide top right buttons (Deploy, GitHub, etc.) except the 3 dots */
+    /* Hide top right buttons except 3 dots */
     .stAppDeployButton {display: none !important;}
     [data-testid="stHeaderActionElements"] {display: none !important;}
     
-    /* Lock text chat input to the bottom */
-    .stChatInput {position: fixed; bottom: 3rem;}
-    
-    /* 3D Orb Styling */
-    .orb-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        margin-top: 4rem;
-        margin-bottom: 2rem;
+    /* Center Title exactly like the image */
+    h1 {
+        text-align: center;
+        margin-top: 1rem;
+        font-family: sans-serif;
     }
-    .pulse-orb {
-        width: 80px; 
-        height: 80px;
-        /* 3D Sphere lighting effect */
-        background: radial-gradient(circle at 35% 35%, #4ade80, #166534, #062111);
+
+    /* The Glossy 3D Sphere matching your exact image */
+    .glass-orb {
+        width: 170px;
+        height: 170px;
+        margin: 5rem auto 0 auto;
         border-radius: 50%;
+        background: radial-gradient(circle at 35% 25%, #6bfb9c 0%, #1ab854 35%, #064c1f 75%, #001204 100%);
         box-shadow: 
-            0 10px 25px rgba(22, 101, 52, 0.5), 
-            inset 0 -10px 20px rgba(0, 0, 0, 0.6),
-            inset 0 10px 20px rgba(255, 255, 255, 0.4);
-        animation: pulse 3s infinite ease-in-out;
+            inset -15px -15px 30px rgba(0,0,0,0.7),
+            inset 15px 15px 25px rgba(255,255,255,0.4),
+            0 25px 35px rgba(0,0,0,0.5);
+    }
+
+    /* 
+       THE HACK: Pull the native Streamlit audio widget exactly over the sphere 
+       and make it transparent. You see the sphere, but you click the mic.
+    */
+    [data-testid="stAudioInput"] {
+        margin-top: -170px !important;
+        width: 170px !important;
+        height: 170px !important;
+        margin-left: auto;
+        margin-right: auto;
+        opacity: 0.001; /* Completely hides the ugly grey box */
+        z-index: 999;
+        cursor: pointer;
     }
     
-    @keyframes pulse {
-        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); }
-        50% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(74, 222, 128, 0); }
-        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-    }
-    
-    /* Hide the text/labels for the native audio input */
-    [data-testid="stAudioInput"] label {
-        display: none !important;
+    /* Lock text chat input to the bottom */
+    .stChatInput {
+        position: fixed; 
+        bottom: 3rem;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Clean title
-st.title("Sam")
+st.markdown("<h1>Sam</h1>", unsafe_allow_html=True)
 
-# Initialize Router in session state
+# Session state initialization
 if "router" not in st.session_state:
     try:
         st.session_state.router = SamRouter()
@@ -69,14 +71,14 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- 3D ORB ---
-st.markdown('<div class="orb-container"><div class="pulse-orb"></div></div>', unsafe_allow_html=True)
+# Render the visual 3D sphere
+st.markdown('<div class="glass-orb"></div>', unsafe_allow_html=True)
 
-# Native audio input widget (styled cleanly without labels)
-audio_value = st.audio_input("", label_visibility="collapsed")
+# Render the invisible audio input right on top of it
+audio_value = st.audio_input("Sam Mic", label_visibility="collapsed")
 
 if audio_value:
-    with st.spinner("Listening..."):
+    with st.spinner("Processing voice..."):
         try:
             audio_bytes = audio_value.getvalue()
             response = st.session_state.chat.send_message([
@@ -94,7 +96,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Text input
+# Bottom text input
 if prompt := st.chat_input("Or type a message to..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
