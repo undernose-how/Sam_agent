@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import sys
 import os
 
@@ -9,50 +10,10 @@ st.set_page_config(page_title="Sam", layout="centered")
 
 st.markdown("""
     <style>
-    /* Hide top right buttons except 3 dots */
     .stAppDeployButton {display: none !important;}
     [data-testid="stHeaderActionElements"] {display: none !important;}
-    
-    /* Center Title exactly like the image */
-    h1 {
-        text-align: center;
-        margin-top: 1rem;
-        font-family: sans-serif;
-    }
-
-    /* The Glossy 3D Sphere matching your exact image */
-    .glass-orb {
-        width: 170px;
-        height: 170px;
-        margin: 5rem auto 0 auto;
-        border-radius: 50%;
-        background: radial-gradient(circle at 35% 25%, #6bfb9c 0%, #1ab854 35%, #064c1f 75%, #001204 100%);
-        box-shadow: 
-            inset -15px -15px 30px rgba(0,0,0,0.7),
-            inset 15px 15px 25px rgba(255,255,255,0.4),
-            0 25px 35px rgba(0,0,0,0.5);
-    }
-
-    /* 
-       THE HACK: Pull the native Streamlit audio widget exactly over the sphere 
-       and make it transparent. You see the sphere, but you click the mic.
-    */
-    [data-testid="stAudioInput"] {
-        margin-top: -170px !important;
-        width: 170px !important;
-        height: 170px !important;
-        margin-left: auto;
-        margin-right: auto;
-        opacity: 0.001; /* Completely hides the ugly grey box */
-        z-index: 999;
-        cursor: pointer;
-    }
-    
-    /* Lock text chat input to the bottom */
-    .stChatInput {
-        position: fixed; 
-        bottom: 3rem;
-    }
+    h1 { text-align: center; margin-top: 1rem; font-family: sans-serif; }
+    .stChatInput { position: fixed; bottom: 3rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,32 +32,129 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Render the visual 3D sphere
-st.markdown('<div class="glass-orb"></div>', unsafe_allow_html=True)
+# --- SMART ORB JAVASCRIPT COMPONENT ---
+# This block handles the 3D UI, Noise Suppression, and Silence Detection
+orb_html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 250px;
+            margin: 0;
+            background-color: transparent;
+        }
+        .glass-orb {
+            width: 170px;
+            height: 170px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 25%, #6bfb9c 0%, #1ab854 35%, #064c1f 75%, #001204 100%);
+            box-shadow: 
+                inset -15px -15px 30px rgba(0,0,0,0.7),
+                inset 15px 15px 25px rgba(255,255,255,0.4),
+                0 25px 35px rgba(0,0,0,0.5);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        /* Glowing effect when actively listening */
+        .glass-orb.listening {
+            box-shadow: 
+                inset -15px -15px 30px rgba(0,0,0,0.7),
+                inset 15px 15px 25px rgba(255,255,255,0.4),
+                0 0 50px #6bfb9c,
+                0 0 100px rgba(107, 251, 156, 0.6);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="glass-orb" id="orb"></div>
 
-# Render the invisible audio input right on top of it
-audio_value = st.audio_input("Sam Mic", label_visibility="collapsed")
+    <script>
+        function init() {
+            Streamlit.setComponentReady();
+            Streamlit.setFrameHeight(250);
+            
+            const orb = document.getElementById("orb");
+            // Load Chrome's native Speech Recognition (includes VAD & DSP Noise Suppression)
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                orb.innerHTML = "<p style='color:white;text-align:center;padding-top:70px'>Not Supported</p>";
+                return;
+            }
 
-if audio_value:
-    with st.spinner("Processing voice..."):
-        try:
-            audio_bytes = audio_value.getvalue()
-            response = st.session_state.chat.send_message([
-                {"data": audio_bytes, "mime_type": "audio/wav"},
-                "Please respond to this voice message directly."
-            ])
-            st.session_state.messages.append({"role": "user", "content": "🎤 [Voice Message]"})
-            st.session_state.messages.append({"role": "assistant", "content": response.text})
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error: {e}")
+            const recognition = new SpeechRecognition();
+            // Automatically stop when silence is detected
+            recognition.continuous = false; 
+            recognition.interimResults = false;
+
+            orb.addEventListener("click", () => {
+                orb.classList.add("listening");
+                recognition.start();
+            });
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                orb.classList.remove("listening");
+                // Send the recognized text back to Streamlit/Python
+                Streamlit.setComponentValue(transcript);
+            };
+
+            recognition.onspeechend = () => {
+                recognition.stop();
+                orb.classList.remove("listening");
+            };
+
+            recognition.onerror = (event) => {
+                orb.classList.remove("listening");
+            };
+        }
+        
+        window.addEventListener("load", init);
+    </script>
+</body>
+</html>
+"""
+
+# Render the Smart Orb
+transcript = components.html(orb_html, height=250)
 
 # Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Bottom text input
+# Handle Voice Input from the Orb
+if transcript and transcript != st.session_state.get("last_voice_input", ""):
+    st.session_state.last_voice_input = transcript
+    st.session_state.messages.append({"role": "user", "content": f"🎤 {transcript}"})
+    
+    with st.chat_message("user"):
+        st.markdown(f"🎤 {transcript}")
+        
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        try:
+            response_stream = st.session_state.chat.send_message_stream(transcript)
+            full_response = ""
+            for chunk in response_stream:
+                if chunk.text:
+                    full_response += chunk.text
+                    message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
+        except Exception as e:
+            full_response = f"[Error] {str(e)}"
+            message_placeholder.markdown(full_response)
+            
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    st.rerun()
+
+# Handle Text Input from the bottom bar
 if prompt := st.chat_input("Or type a message to..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -117,3 +175,4 @@ if prompt := st.chat_input("Or type a message to..."):
             message_placeholder.markdown(full_response)
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+    st.rerun()
