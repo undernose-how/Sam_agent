@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import sys
 import os
 
@@ -14,6 +13,34 @@ st.markdown("""
     [data-testid="stHeaderActionElements"] {display: none !important;}
     h1 { text-align: center; margin-top: 1rem; font-family: sans-serif; }
     .stChatInput { position: fixed; bottom: 3rem; }
+    
+    .orb-wrapper {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 3rem;
+        margin-bottom: 2rem;
+    }
+    .glass-orb {
+        width: 170px;
+        height: 170px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 25%, #6bfb9c 0%, #1ab854 35%, #064c1f 75%, #001204 100%);
+        box-shadow: 
+            inset -15px -15px 30px rgba(0,0,0,0.7),
+            inset 15px 15px 25px rgba(255,255,255,0.4),
+            0 25px 35px rgba(0,0,0,0.5);
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .glass-orb.listening {
+        box-shadow: 
+            inset -15px -15px 30px rgba(0,0,0,0.7),
+            inset 15px 15px 25px rgba(255,255,255,0.4),
+            0 0 50px #6bfb9c,
+            0 0 100px rgba(107, 251, 156, 0.6);
+        transform: scale(1.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -32,80 +59,63 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- SAFE SMART ORB COMPONENT ---
-orb_html = """
-<!DOCTYPE html>
-<html>
-<head>
-    <script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.3.0/dist/streamlit.js"></script>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 250px;
-            margin: 0;
-            background-color: transparent;
-        }
-        .glass-orb {
-            width: 170px;
-            height: 170px;
-            border-radius: 50%;
-            background: radial-gradient(circle at 35% 25%, #6bfb9c 0%, #1ab854 35%, #064c1f 75%, #001204 100%);
-            box-shadow: 
-                inset -15px -15px 30px rgba(0,0,0,0.7),
-                inset 15px 15px 25px rgba(255,255,255,0.4),
-                0 25px 35px rgba(0,0,0,0.5);
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        .glass-orb.listening {
-            box-shadow: 
-                inset -15px -15px 30px rgba(0,0,0,0.7),
-                inset 15px 15px 25px rgba(255,255,255,0.4),
-                0 0 50px #6bfb9c,
-                0 0 100px rgba(107, 251, 156, 0.6);
-            transform: scale(1.05);
-        }
-    </style>
-</head>
-<body>
-    <div class="glass-orb" id="orb"></div>
+# Safely parse query parameters to guarantee a string value
+raw_param = st.query_params.get("voice_input", "")
+voice_text = str(raw_param) if not isinstance(raw_param, list) else str(raw_param[0])
 
+if voice_text and voice_text != st.session_state.get("processed_voice", ""):
+    st.session_state.processed_voice = voice_text
+    st.session_state.messages.append({"role": "user", "content": f"🎤 {voice_text}"})
+    
+    with st.chat_message("user"):
+        st.markdown(f"🎤 {voice_text}")
+        
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        try:
+            response_stream = st.session_state.chat.send_message_stream(voice_text)
+            full_response = ""
+            for chunk in response_stream:
+                if chunk.text:
+                    full_response += chunk.text
+                    message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
+        except Exception as e:
+            full_response = f"[Error] {str(e)}"
+            message_placeholder.markdown(full_response)
+            
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    st.query_params.clear()
+    st.rerun()
+
+# Render the 3D Orb with direct speech-recognition JS
+st.markdown("""
+    <div class="orb-wrapper">
+        <div class="glass-orb" id="sam-orb" title="Tap to speak"></div>
+    </div>
     <script>
-        // Fallback safety to prevent perpetual loading
-        function safeInit() {
-            if (window.Streamlit) {
-                Streamlit.setComponentReady();
-                Streamlit.setFrameHeight(250);
-            }
-        }
-        window.addEventListener("load", safeInit);
-        setTimeout(safeInit, 200);
-
-        const orb = document.getElementById("orb");
+        const orb = document.getElementById("sam-orb");
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         
-        if (SpeechRecognition) {
+        if (orb && SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.continuous = false;
             recognition.interimResults = false;
 
-            orb.addEventListener("click", () => {
+            orb.onclick = () => {
                 orb.classList.add("listening");
                 try {
                     recognition.start();
                 } catch(e) {
                     orb.classList.remove("listening");
                 }
-            });
+            };
 
             recognition.onresult = (event) => {
                 const transcript = event.results[0][0].transcript;
                 orb.classList.remove("listening");
-                if (window.Streamlit) {
-                    Streamlit.setComponentValue(transcript);
-                }
+                const currentUrl = window.location.href.split('?')[0];
+                window.location.href = currentUrl + "?voice_input=" + encodeURIComponent(transcript);
             };
 
             recognition.onspeechend = () => {
@@ -118,43 +128,14 @@ orb_html = """
             };
         }
     </script>
-</body>
-</html>
-"""
-
-transcript = components.html(orb_html, height=250)
+""", unsafe_allow_html=True)
 
 # Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Handle Voice Input from the Orb
-if transcript and transcript != st.session_state.get("last_voice_input", ""):
-    st.session_state.last_voice_input = transcript
-    st.session_state.messages.append({"role": "user", "content": f"🎤 {transcript}"})
-    
-    with st.chat_message("user"):
-        st.markdown(f"🎤 {transcript}")
-        
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        try:
-            response_stream = st.session_state.chat.send_message_stream(transcript)
-            full_response = ""
-            for chunk in response_stream:
-                if chunk.text:
-                    full_response += chunk.text
-                    message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
-        except Exception as e:
-            full_response = f"[Error] {str(e)}"
-            message_placeholder.markdown(full_response)
-            
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    st.rerun()
-
-# Handle Text Input from the bottom bar
+# Handle Text Input from bottom bar
 if prompt := st.chat_input("Or type a message to..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
