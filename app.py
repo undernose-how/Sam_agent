@@ -13,46 +13,13 @@ st.markdown("""
     [data-testid="stHeaderActionElements"] {display: none !important;}
     h1 { text-align: center; margin-top: 1rem; font-family: sans-serif; }
     
-    .orb-container {
+    .orb-wrapper {
         display: flex;
         justify-content: center;
         align-items: center;
-        margin-top: 2.5rem;
-        margin-bottom: 2.5rem;
-        perspective: 800px;
-    }
-    
-    .spinning-orb {
-        width: 160px;
-        height: 160px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 30% 30%, #7efcb0 0%, #17b952 35%, #05481d 75%, #001204 100%);
-        box-shadow: 
-            inset -20px -20px 40px rgba(0,0,0,0.8),
-            inset 15px 15px 30px rgba(255,255,255,0.4),
-            0 20px 40px rgba(0,0,0,0.4);
-        position: relative;
-        animation: floatOrb 4s ease-in-out infinite;
-        transform-style: preserve-3d;
-    }
-
-    .spinning-orb::after {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
-        border-radius: 50%;
-        background: conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 25%, rgba(255,255,255,0) 50%, rgba(10,80,30,0.3) 75%, rgba(255,255,255,0) 100%);
-        animation: spinSheen 6s linear infinite;
-    }
-
-    @keyframes spinSheen {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    @keyframes floatOrb {
-        0%, 100% { transform: translateY(0px) scale(1); }
-        50% { transform: translateY(-8px) scale(1.02); }
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        filter: drop-shadow(0 15px 25px rgba(10, 150, 80, 0.3));
     }
     </style>
 """, unsafe_allow_html=True)
@@ -72,11 +39,71 @@ if "chat" not in st.session_state and "router" in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Render the clean 3D Spinning Orb
+# Render the True 3D Rotating Sphere using Three.js
 st.markdown("""
-    <div class="orb-container">
-        <div class="spinning-orb"></div>
+    <div class="orb-wrapper">
+        <div id="three-orb-canvas" style="width: 180px; height: 180px; border-radius: 50%;"></div>
     </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+    (function() {
+        const container = document.getElementById('three-orb-canvas');
+        if (!container) return;
+        
+        // Prevent duplicate initializations if Streamlit reruns
+        container.innerHTML = '';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+        camera.position.z = 4;
+
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(180, 180);
+        container.appendChild(renderer.domElement);
+
+        // Inner solid 3D sphere with rich metallic/glossy green material
+        const geometry = new THREE.SphereGeometry(1.2, 32, 32);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x10b981,
+            emissive: 0x054f21,
+            roughness: 0.25,
+            metalness: 0.4
+        });
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // Outer translucent high-tech wireframe sphere for depth
+        const wireGeometry = new THREE.SphereGeometry(1.26, 16, 16);
+        const wireMaterial = new THREE.MeshBasicMaterial({
+            color: 0x6bfb9c,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.2
+        });
+        const wireSphere = new THREE.Mesh(wireGeometry, wireMaterial);
+        scene.add(wireSphere);
+
+        // Dynamic 3D Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0x6bfb9c, 3, 50);
+        pointLight.position.set(3, 3, 3);
+        scene.add(pointLight);
+
+        // Smooth multi-axis rotation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            sphere.rotation.x += 0.004;
+            sphere.rotation.y += 0.007;
+            wireSphere.rotation.x -= 0.003;
+            wireSphere.rotation.y -= 0.005;
+            renderer.render(scene, camera);
+        }
+        animate();
+    })();
+    </script>
 """, unsafe_allow_html=True)
 
 # Display chat history
@@ -84,7 +111,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Handle Chat Input cleanly and reliably
+# Handle Chat Input cleanly
 if prompt := st.chat_input("Message Sam..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
