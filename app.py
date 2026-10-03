@@ -6,58 +6,55 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.router import SamRouter
 
-st.set_page_config(page_title="Sam Agent", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="Sam", layout="centered")
 
-# Custom CSS for the Glowing Orb and modern mobile layout
+# Custom CSS to match the minimal 3D design
 st.markdown("""
     <style>
+    /* Hide top right buttons (Deploy, GitHub, etc.) except the 3 dots */
+    .stAppDeployButton {display: none !important;}
+    [data-testid="stHeaderActionElements"] {display: none !important;}
+    
+    /* Lock text chat input to the bottom */
     .stChatInput {position: fixed; bottom: 3rem;}
+    
+    /* 3D Orb Styling */
     .orb-container {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        margin-top: 1rem;
+        margin-top: 4rem;
         margin-bottom: 2rem;
     }
     .pulse-orb {
-        width: 90px;
-        height: 90px;
-        background: radial-gradient(circle, #38ef7d 0%, #11998e 100%);
+        width: 80px; 
+        height: 80px;
+        /* 3D Sphere lighting effect */
+        background: radial-gradient(circle at 35% 35%, #4ade80, #166534, #062111);
         border-radius: 50%;
-        box-shadow: 0 0 25px rgba(56, 239, 125, 0.6);
-        animation: pulse 2s infinite;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
+        box-shadow: 
+            0 10px 25px rgba(22, 101, 52, 0.5), 
+            inset 0 -10px 20px rgba(0, 0, 0, 0.6),
+            inset 0 10px 20px rgba(255, 255, 255, 0.4);
+        animation: pulse 3s infinite ease-in-out;
     }
+    
     @keyframes pulse {
-        0% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(56, 239, 125, 0.7);
-        }
-        70% {
-            transform: scale(1.05);
-            box-shadow: 0 0 0 20px rgba(56, 239, 125, 0);
-        }
-        100% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(56, 239, 125, 0);
-        }
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(74, 222, 128, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
     }
-    .orb-label {
-        margin-top: 12px;
-        font-size: 0.9rem;
-        color: #888;
-        font-weight: 500;
-        letter-spacing: 0.5px;
+    
+    /* Hide the text/labels for the native audio input */
+    [data-testid="stAudioInput"] label {
+        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🤖 Sam - Modular Assistant")
-st.caption("Your personal AI companion across Chromebook & mobile.")
+# Clean title
+st.title("Sam")
 
 # Initialize Router in session state
 if "router" not in st.session_state:
@@ -66,54 +63,45 @@ if "router" not in st.session_state:
     except Exception as e:
         st.error(f"Initialization Error: {e}")
 
-# Initialize persistent chat session
 if "chat" not in st.session_state and "router" in st.session_state:
     st.session_state.chat = st.session_state.router.get_chat_session()
 
-# Initialize message history list
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- ORB VOICE INTERACTION AREA ---
-st.markdown('<div class="orb-container"><div class="pulse-orb">🎙️</div><div class="orb-label">Tap below to speak with Sam</div></div>', unsafe_allow_html=True)
+# --- 3D ORB ---
+st.markdown('<div class="orb-container"><div class="pulse-orb"></div></div>', unsafe_allow_html=True)
 
-# Native audio input widget styled centrally for voice interaction
-audio_value = st.audio_input("Voice Input")
+# Native audio input widget (styled cleanly without labels)
+audio_value = st.audio_input("", label_visibility="collapsed")
 
-# Handle Voice Input processing
 if audio_value:
-    with st.spinner("Sam is listening and processing your voice..."):
+    with st.spinner("Listening..."):
         try:
-            # Send audio bytes directly to Gemini 3.8 Flash multimodal input
             audio_bytes = audio_value.getvalue()
             response = st.session_state.chat.send_message([
                 {"data": audio_bytes, "mime_type": "audio/wav"},
                 "Please respond to this voice message directly."
             ])
-            
-            # Log exchange
             st.session_state.messages.append({"role": "user", "content": "🎤 [Voice Message]"})
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             st.rerun()
         except Exception as e:
-            st.error(f"Voice Processing Error: {e}")
-
-st.divider()
+            st.error(f"Error: {e}")
 
 # Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Text input handling fallback/alternative
-if prompt := st.chat_input("Or type a message to Sam..."):
+# Text input
+if prompt := st.chat_input("Or type a message to..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        message_placeholder.text("Sam is thinking...")
         try:
             response_stream = st.session_state.chat.send_message_stream(prompt)
             full_response = ""
